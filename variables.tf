@@ -37,8 +37,10 @@ variable "master_username" {
 
 variable "dns_zone_name" {
   type = string
+  default = "germatech.click"
 }
 
 variable "subject_alternative_names" {
-  type = list(any)
+  type = list
+  default = ["*.germatech.click"]
 }

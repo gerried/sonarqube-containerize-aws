@@ -53,8 +53,8 @@ locals {
 }
 
 data "aws_secretsmanager_secret_version" "secret-version" {
-  depends_on =[module.aurora]
-  secret_id = module.aurora.secrets_version
+  depends_on = [module.aurora]
+  secret_id  = module.aurora.secrets_version
 }
 
 data "aws_availability_zones" "available" {
@@ -84,12 +84,12 @@ module "networking" {
   private_subnets = ["10.0.1.0/24", "10.0.3.0/24", "10.0.5.0/24"]
   public_subnets  = ["10.0.0.0/24", "10.0.2.0/24", "10.0.4.0/24"]
 
-  enable_nat_gateway = true
-  enable_vpn_gateway = true
+  enable_nat_gateway   = true
+  enable_vpn_gateway   = true
   enable_dns_hostnames = true
 
-  enable_flow_log = true
-  create_flow_log_cloudwatch_iam_role = true
+  enable_flow_log                      = true
+  create_flow_log_cloudwatch_iam_role  = true
   create_flow_log_cloudwatch_log_group = true
 
   tags = {
@@ -147,7 +147,7 @@ resource "aws_ecs_cluster" "sonarqube" {
 }
 
 resource "aws_ecs_task_definition" "sonarqube" {
-  depends_on =[module.aurora]
+  depends_on = [module.aurora]
 
   family = "${var.container_name}-task-def"
 
@@ -168,7 +168,7 @@ resource "aws_ecs_task_definition" "sonarqube" {
         var.image_version
       )
       essential = true
-      
+
       # mountPoints = [
       #   {
       #     containerPath = "/opt/sonarqube"                        ####where to find this
@@ -194,16 +194,16 @@ resource "aws_ecs_task_definition" "sonarqube" {
       command = ["-Dsonar.search.javaAdditionalOpts=-Dnode.store.allow_mmap=false"]
       environment = [
         {
-         name = "SONAR_JDBC_USERNAME" 
-         value = "${local.database_secrets["username"]}" 
+          name  = "SONAR_JDBC_USERNAME"
+          value = "${local.database_secrets["username"]}"
         },
         {
-         name = "SONAR_JDBC_PASSWORD"
-         value = "${local.database_secrets["password"]}" 
+          name  = "SONAR_JDBC_PASSWORD"
+          value = "${local.database_secrets["password"]}"
         },
         {
-         name = "SONAR_JDBC_URL"
-         value = "jdbc:postgresql://${local.database_secrets["endpoint"]}/${local.database_secrets["dbname"]}?sslmode=require"
+          name  = "SONAR_JDBC_URL"
+          value = "jdbc:postgresql://${local.database_secrets["endpoint"]}/${local.database_secrets["dbname"]}?sslmode=require"
         }
       ]
     }
@@ -213,7 +213,7 @@ resource "aws_ecs_task_definition" "sonarqube" {
 resource "aws_ecs_service" "sonarqube" {
 
   name             = upper("${var.component_name}-service")
-  cluster          = aws_ecs_cluster.sonarqube.id  # aws_ecs_cluster.jenkins.id
+  cluster          = aws_ecs_cluster.sonarqube.id # aws_ecs_cluster.jenkins.id
   task_definition  = aws_ecs_task_definition.sonarqube.arn
   desired_count    = 1
   platform_version = "1.4.0"
