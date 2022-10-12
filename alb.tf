@@ -1,20 +1,20 @@
 
-resource "aws_lb" "alb_jenkins" {
-  name               = "${var.component_name}-jenkins-alb"
+resource "aws_lb" "alb_sonarqube" {
+  name               = "${var.component_name}-sonarqube-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
+  security_groups    = [aws_security_group.ecs-sg.id]
   subnets            = local.public_subnet
 
   enable_deletion_protection = false
 
   tags = {
-    Name = "${var.component_name}-jenkins"
+    Name = "${var.component_name}-sonarqube"
   }
 }
 
-resource "aws_lb_listener" "jenkins_listener_redirect" {
-  load_balancer_arn = aws_lb.alb_jenkins.arn
+resource "aws_lb_listener" "sonarqube_listener_redirect" {
+  load_balancer_arn = aws_lb.alb_sonarqube.arn
   port              = "80"
   protocol          = "HTTP"
 
@@ -29,20 +29,20 @@ resource "aws_lb_listener" "jenkins_listener_redirect" {
   }
 }
 
-resource "aws_lb_listener" "jenkins_listener" {
-  load_balancer_arn = aws_lb.alb_jenkins.arn
+resource "aws_lb_listener" "sonarqube_listener" {
+  load_balancer_arn = aws_lb.alb_sonarqube.arn
   port              = "443"
   protocol          = "HTTPS"
   certificate_arn   = try(module.acm.acm_certificate_arn, "")
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.jenkins_target_group.arn
+    target_group_arn = aws_lb_target_group.sonarqube_target_group.arn
   }
 }
 
-resource "aws_lb_target_group" "jenkins_target_group" {
-  depends_on = [aws_lb.alb_jenkins]
+resource "aws_lb_target_group" "sonarqube_target_group" {
+  depends_on = [aws_lb.alb_sonarqube]
 
   name        = lower("${var.component_name}-tg-group")
   target_type = "ip"
@@ -62,7 +62,7 @@ resource "aws_lb_target_group" "jenkins_target_group" {
     unhealthy_threshold = "7"
   }
   tags = {
-    Name = "${var.component_name}-jenkins-target-group"
+    Name = "${var.component_name}-sonarqube-target-group"
   }
 }
 
@@ -85,8 +85,8 @@ resource "aws_route53_record" "app" {
   type    = "A"
 
   alias {
-    name                   = aws_lb.alb_jenkins.dns_name
-    zone_id                = aws_lb.alb_jenkins.zone_id
+    name                   = aws_lb.alb_sonarqube.dns_name
+    zone_id                = aws_lb.alb_sonarqube.zone_id
     evaluate_target_health = true
   }
 }

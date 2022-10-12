@@ -1,16 +1,16 @@
 variable "component_name" {
   type    = string
-  default = "jenkins-agent"
+  default = "sonarqube-server"
 }
 
 variable "container_name" {
   type    = string
-  default = "master-agent"
+  default = "sonarqube-server"
 }
 
 variable "image_name" {
   type    = string
-  default = "jenkins-release-image"
+  default = "sonarqube-customize-image-release"
 }
 
 variable "image_version" {
@@ -20,12 +20,19 @@ variable "image_version" {
 
 variable "container_port" {
   type    = number
-  default = 8080
+  default = 9000
 }
 
-variable "worker_nodePort" {
-  type    = number
-  default = 50000
+variable "database_name" {
+  description = "sonarQube database name"
+  type        = string
+  default     = "sonar"
+}
+
+variable "master_username" {
+  description = "sonarQube database master user name"
+  type        = string
+  default     = "sonar"
 }
 
 variable "dns_zone_name" {

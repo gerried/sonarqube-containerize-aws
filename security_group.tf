@@ -1,23 +1,9 @@
 
-resource "aws_security_group" "alb_sg" {
-  name        = "${var.component_name}-alb"
-  description = "Allow http and https inbound traffic"
+resource "aws_security_group" "alb-sg" {
+  name        = format("%s-alb-sg", var.component_name)
+  description = "Allow allow http and https access}"
   vpc_id      = local.vpc_id
 
-  ingress {
-    description = "https from to anywhere"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  ingress {
-    description = "http from to anywhere"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -26,65 +12,72 @@ resource "aws_security_group" "alb_sg" {
   }
 
   tags = {
-    Name = "${var.component_name}-alb"
+    Name = format("%s-alb-sg", var.component_name)
   }
 }
 
-resource "aws_security_group" "efs" {
-  name        = "${var.component_name}-efs"
-  description = "Allow jenkins agent inbound traffic on 2049"
+resource "aws_security_group_rule" "alb-ingress-http-rule" {
+  security_group_id = aws_security_group.alb-sg.id
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "alb-ingress-https-rule" {
+  security_group_id = aws_security_group.alb-sg.id
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+
+resource "aws_security_group" "postgres-sg" {
+  name        = format("%s-postgres-sg", var.component_name)
+  description = "Allow ecs cluster on port ${var.container_port}"
   vpc_id      = local.vpc_id
 
-    egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
   tags = {
-    Name = "${var.component_name}-efs"
+    Name = format("%s-postgres-sg", var.component_name)
   }
 }
 
-resource "aws_security_group_rule" "efs_ingress_rule_for_jenkins_agent" {
-  security_group_id        = aws_security_group.efs.id
+resource "aws_security_group_rule" "postgres-ingress-rule" {
+  security_group_id        = aws_security_group.postgres-sg.id
   type                     = "ingress"
-  from_port                = 2049
-  to_port                  = 2049
+  from_port                = 5432
+  to_port                  = 5432
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.jenkins_agnet.id
+  source_security_group_id = aws_security_group.ecs-sg.id
 }
 
-resource "aws_security_group" "jenkins_agnet" {
-  name        = "${var.component_name}-jenkinsagnet"
-  description = "Allow jenkins agent inbound traffic on 2049"
+resource "aws_security_group" "ecs-sg" {
+  name        = format("%s-ecs-sg", var.component_name) # "${ var.component_name}-postgres-sg"
+  description = "Allow alb  on port ${var.container_port}"
   vpc_id      = local.vpc_id
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
   tags = {
-    Name = "${var.component_name}-jenkinsagnet"
+    Name = format("%s-ecs-sg", var.component_name)
   }
 }
 
-resource "aws_security_group_rule" "jenkins_agent_allow_alb_sg" {
-  security_group_id        = aws_security_group.jenkins_agnet.id
+resource "aws_security_group_rule" "ecs-ingress-rule" {
+  security_group_id        = aws_security_group.ecs-sg.id
   type                     = "ingress"
   from_port                = var.container_port
   to_port                  = var.container_port
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb_sg.id
+  source_security_group_id = aws_security_group.alb-sg.id
 }
 
-resource "aws_security_group_rule" "jenkins_worker_nodes_allow_alb_sg" {
-  security_group_id        = aws_security_group.jenkins_agnet.id
-  type                     = "ingress"
-  from_port                = var.worker_nodePort
-  to_port                  = var.worker_nodePort
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb_sg.id
+resource "aws_security_group_rule" "allow_ecs_egress_rule" {
+  security_group_id = aws_security_group.ecs-sg.id
+  type              = "egress"
+  protocol          = "tcp"
+  to_port           = 5432
+  from_port         = 5432
+  cidr_blocks       = module.networking.private_subnets_cidr_blocks
 }

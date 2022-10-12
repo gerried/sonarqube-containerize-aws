@@ -5,7 +5,7 @@ terraform {
   backend "s3" {
     bucket         = "kojitechs-deploy-vpcchildmodule.tf-12"
     dynamodb_table = "terraform-lock"
-    key            = "path/env/jenkins_stables"  ##### check
+    key            = "path/env"
     region         = "us-east-1"
     encrypt        = "true"
   }
@@ -40,11 +40,13 @@ locals {
     cell_name               = "WEB"
     component_name          = var.component_name
   }
-  azs            = data.aws_availability_zones.available.names
-  vpc_id         = module.networking.vpc_id
-  public_subnet  = module.networking.public_subnets
-  private_subnet = module.networking.private_subnets
-  account_id     = data.aws_caller_identity.current.account_id
+  azs              = data.aws_availability_zones.available.names
+  vpc_id           = module.networking.vpc_id
+  public_subnet    = module.networking.public_subnets
+  private_subnet   = module.networking.private_subnets
+  name             = "kojitechs-${replace(basename(var.component_name), "_", "-")}"
+  db_subnets_names = module.networking.database_subnet_group_name
+  account_id       = data.aws_caller_identity.current.account_id
 }
 
 data "aws_availability_zones" "available" {
@@ -82,18 +84,52 @@ module "networking" {
   create_flow_log_cloudwatch_iam_role = true
   create_flow_log_cloudwatch_log_group = true
 
+  tags = {
+    Terraform = "true"
+  }
 
 }
 
+module "aurora" {
+  source = "git::https://github.com/Bkoji1150/aws-rdscluster-kojitechs-tf.git?ref=v1.1.11"
+
+  component_name = var.component_name
+  name           = local.name
+  engine         = "aurora-postgresql"
+  engine_version = "11.15"
+  instances = {
+    1 = {
+      instance_class      = "db.r5.2xlarge"
+      publicly_accessible = false
+    }
+  }
+
+  vpc_id                 = local.vpc_id
+  create_db_subnet_group = true
+  subnets                = local.private_subnet
+
+  create_security_group               = true
+  vpc_security_group_ids              = [aws_security_group.postgres-sg.id]
+  iam_database_authentication_enabled = true
+
+  apply_immediately   = true
+  skip_final_snapshot = true
+
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+  database_name                   = var.database_name
+  master_username                 = var.master_username
+}
+
+
 resource "aws_cloudwatch_log_group" "ecs_task_logs" {
-  name = "/ecs/jenkins_build_agent/${var.container_name}"
+  name = "/ecs/sonarqube_build_agent/${var.container_name}"
 
   tags = {
-    Name = "ecs/jenkins_build_agent/${var.container_name}"
+    Name = "ecs/sonarqube_build_agent/${var.container_name}"
   }
 }
 
-resource "aws_ecs_task_definition" "jenkins" {
+resource "aws_ecs_task_definition" "sonarqube" {
   family = "${var.container_name}-task-def"
 
   requires_compatibilities = [
@@ -115,9 +151,9 @@ resource "aws_ecs_task_definition" "jenkins" {
       essential = true
       mountPoints = [
         {
-          containerPath = "/var/jenkins_home"
-          sourceVolume  = "${var.component_name}-jenkins-agent"
-          readOnly = false
+          containerPath = "/opt/sonarqube"                        ####where to find this
+          sourceVolume  = "${var.component_name}-sonarqube-agent" #check this
+          readOnly      = false
         }
       ],
       logConfiguration = {
@@ -125,40 +161,25 @@ resource "aws_ecs_task_definition" "jenkins" {
         options = {
           awslogs-group         = "${aws_cloudwatch_log_group.ecs_task_logs.name}",
           awslogs-region        = "${data.aws_region.current.name}",
-          awslogs-stream-prefix = "${aws_cloudwatch_log_group.ecs_task_logs.name}-jenkins-build-agent"
+          awslogs-stream-prefix = "${aws_cloudwatch_log_group.ecs_task_logs.name}-sonarqube-build-agent"
         }
       },
       portMappings = [
         {
           containerPort = var.container_port
           hostPort      = var.container_port
-        },
-        {
-          containerPort = var.worker_nodePort
-          hostPort      = var.worker_nodePort
         }
       ]
     }
   ])
 
   volume {
-    name = "${var.component_name}-jenkins-agent"
-
-    efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.jenkins.id
-      root_directory          = "/opt/data"
-      transit_encryption      = "ENABLED"
-      transit_encryption_port = 2999
-      authorization_config {
-        access_point_id = aws_efs_access_point.fargate.id
-        iam             = "ENABLED"
-      }
-    }
+    name = "${var.component_name}-sonarqube-agent" ##check this
   }
 }
 
-resource "aws_ecs_cluster" "jenkins" {
-  name = upper("buld-agnet")
+resource "aws_ecs_cluster" "sonarqube" {
+  name = upper("build-agent")
 
   setting {
     name  = "containerInsights"
@@ -166,23 +187,23 @@ resource "aws_ecs_cluster" "jenkins" {
   }
 }
 
-resource "aws_ecs_service" "jenkins" {
+resource "aws_ecs_service" "sonarqube" {
 
   name             = upper("${var.component_name}-service")
-  cluster          = "BULD-AGNET" # aws_ecs_cluster.jenkins.id
-  task_definition  = aws_ecs_task_definition.jenkins.arn
+  cluster          = "BUILD-AGENT" # aws_ecs_cluster.jenkins.id
+  task_definition  = aws_ecs_task_definition.sonarqube.arn
   desired_count    = 1
   platform_version = "1.4.0"
   launch_type      = "FARGATE"
 
   network_configuration {
-    security_groups  = [aws_security_group.jenkins_agnet.id]
+    security_groups  = [aws_security_group.ecs-sg.id] ###check this
     subnets          = local.private_subnet
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.jenkins_target_group.arn
+    target_group_arn = aws_lb_target_group.sonarqube_target_group.arn ###check this
     container_name   = var.container_name
     container_port   = var.container_port
   }
