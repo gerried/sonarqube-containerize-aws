@@ -41,6 +41,6 @@ variable "dns_zone_name" {
 }
 
 variable "subject_alternative_names" {
-  type = list
+  type = list(any)
   default = ["*.germatech.click"]
 }
