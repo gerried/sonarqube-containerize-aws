@@ -55,10 +55,10 @@ resource "aws_lb_target_group" "sonarqube_target_group" {
     healthy_threshold   = "2"
     interval            = "90"
     protocol            = "HTTP"
-    port                = "8080"
+    port                = "9000"
     matcher             = "200"
     timeout             = "60"
-    path                = "/login"
+    path                = "/"
     unhealthy_threshold = "7"
   }
   tags = {

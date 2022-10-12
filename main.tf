@@ -47,6 +47,14 @@ locals {
   name             = "kojitechs-${replace(basename(var.component_name), "_", "-")}"
   db_subnets_names = module.networking.database_subnet_group_name
   account_id       = data.aws_caller_identity.current.account_id
+
+  ###DATABSE SECRETS
+  database_secrets = jsondecode(data.aws_secretsmanager_secret_version.secret-version.secret_string)
+}
+
+data "aws_secretsmanager_secret_version" "secret-version" {
+  depends_on =[module.aurora]
+  secret_id = module.aurora.secrets_version
 }
 
 data "aws_availability_zones" "available" {
@@ -129,7 +137,18 @@ resource "aws_cloudwatch_log_group" "ecs_task_logs" {
   }
 }
 
+resource "aws_ecs_cluster" "sonarqube" {
+  name = upper("build-agent")
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+}
+
 resource "aws_ecs_task_definition" "sonarqube" {
+  depends_on =[module.aurora]
+
   family = "${var.container_name}-task-def"
 
   requires_compatibilities = [
@@ -138,8 +157,8 @@ resource "aws_ecs_task_definition" "sonarqube" {
   execution_role_arn = aws_iam_role.iam_for_ecs.arn
   task_role_arn      = aws_iam_role.iam_for_ecs.arn
   network_mode       = "awsvpc"
-  cpu                = 1024 # 8 Gi
-  memory             = 2048 # 4 Gi
+  cpu                = 4096 # 4 vCPU
+  memory             = 8192 # 8 GB
   container_definitions = jsonencode([
     {
       name = var.container_name
@@ -149,13 +168,15 @@ resource "aws_ecs_task_definition" "sonarqube" {
         var.image_version
       )
       essential = true
-      mountPoints = [
-        {
-          containerPath = "/opt/sonarqube"                        ####where to find this
-          sourceVolume  = "${var.component_name}-sonarqube-agent" #check this
-          readOnly      = false
-        }
-      ],
+      
+      # mountPoints = [
+      #   {
+      #     containerPath = "/opt/sonarqube"                        ####where to find this
+      #     sourceVolume  = "${var.component_name}-sonarqube-agent" #check this
+      #     readOnly      = false
+      #   }
+      # ],
+
       logConfiguration = {
         logDriver = "awslogs",
         options = {
@@ -169,28 +190,30 @@ resource "aws_ecs_task_definition" "sonarqube" {
           containerPort = var.container_port
           hostPort      = var.container_port
         }
+      ],
+      command = ["-Dsonar.search.javaAdditionalOpts=-Dnode.store.allow_mmap=false"]
+      environment = [
+        {
+         name = "SONAR_JDBC_USERNAME" 
+         value = "${local.database_secrets["username"]}" 
+        },
+        {
+         name = "SONAR_JDBC_PASSWORD"
+         value = "${local.database_secrets["password"]}" 
+        },
+        {
+         name = "SONAR_JDBC_URL"
+         value = "jdbc:postgresql://${local.database_secrets["endpoint"]}/${local.database_secrets["dbname"]}?sslmode=require"
+        }
       ]
     }
   ])
-
-  volume {
-    name = "${var.component_name}-sonarqube-agent" ##check this
-  }
-}
-
-resource "aws_ecs_cluster" "sonarqube" {
-  name = upper("build-agent")
-
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
 }
 
 resource "aws_ecs_service" "sonarqube" {
 
   name             = upper("${var.component_name}-service")
-  cluster          = "BUILD-AGENT" # aws_ecs_cluster.jenkins.id
+  cluster          = aws_ecs_cluster.sonarqube.id  # aws_ecs_cluster.jenkins.id
   task_definition  = aws_ecs_task_definition.sonarqube.arn
   desired_count    = 1
   platform_version = "1.4.0"
