@@ -76,8 +76,18 @@ resource "aws_security_group_rule" "ecs-ingress-rule" {
 resource "aws_security_group_rule" "allow_ecs_egress_rule" {
   security_group_id = aws_security_group.ecs-sg.id
   type              = "egress"
-  protocol          = "tcp"
-  to_port           = 5432
-  from_port         = 5432
-  cidr_blocks       = module.networking.private_subnets_cidr_blocks
+  protocol          = "-1"
+  to_port           = 0
+  from_port         = 0
+  cidr_blocks       = ["0.0.0.0/0"]
 }
+
+# resource "aws_security_group_rule" "allow_ecs_egress_rule" {
+#   security_group_id = aws_security_group.ecs-sg.id
+#   type              = "egress"
+#   protocol          = "tcp"
+#   to_port           = 5432
+#   from_port         = 5432
+#   cidr_blocks       = module.networking.private_subnets_cidr_blocks
+# }
+
